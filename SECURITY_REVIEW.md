@@ -2,241 +2,306 @@
 
 **Repository:** gianfranco-omnigpt/cli-todo-10  
 **Branch:** main  
-**Review Date:** 2026-02-03  
+**Review Date:** 2026-02-03 (Follow-up Review)  
 **Reviewer:** Security Engineering Team  
 
 ---
 
 ## Decision: CHANGES_REQUIRED
 
-### Summary
-The repository currently contains only project documentation (README.md) with no implementation code. While no vulnerabilities exist in the current state, this review provides **mandatory security requirements** that MUST be implemented before the code can be approved for use.
+### Executive Summary
+**Second security review conducted.** The repository **still contains no implementation code**. Only documentation files exist (README.md, CODE_REVIEW.md, and this security review). 
+
+**Status:** Project remains in planning phase. No code to review = no vulnerabilities detected, but implementation MUST follow security requirements before approval.
 
 ---
 
-## Current State Assessment
+## Current Repository State
 
-### Files Reviewed
-- ✅ README.md (Documentation only)
-- ❌ No implementation files found
-  - Missing: `todo/__main__.py`
-  - Missing: `todo/core.py`
-  - Missing: `todo/storage.py`
+### Files Present
+- ✅ **README.md** - PRD and technical documentation
+- ✅ **CODE_REVIEW.md** - Code review (no implementation found)
+- ✅ **SECURITY_REVIEW.md** - This security review document
+- ❌ **No Python implementation files**
 
-### Implementation Status
-According to README.md:
-- [ ] Setup complete
-- [ ] Implementation in progress
-- [ ] Code review passed
-- [ ] Security review passed
-
----
-
-## Required Security Controls (MUST IMPLEMENT)
-
-When implementing this CLI todo application, the following security controls are **MANDATORY**:
-
-### 1. **Input Validation & Injection Prevention** [CRITICAL]
-
-#### Path Traversal Protection
-```python
-# REQUIRED: Validate storage file path
-import os
-from pathlib import Path
-
-def get_safe_storage_path():
-    """Prevent path traversal attacks"""
-    home = Path.home()
-    storage_path = home / ".todo.json"
-    
-    # Ensure resolved path is within user's home directory
-    if not storage_path.resolve().is_relative_to(home):
-        raise SecurityError("Invalid storage path")
-    
-    return storage_path
+### Missing Implementation
+```
+Expected structure (NOT FOUND):
+todo/
+├── __init__.py
+├── __main__.py
+├── core.py
+└── storage.py
 ```
 
-**Vulnerability:** Without validation, malicious input could write to arbitrary locations.
+### No Code Files Detected
+- Searched for `.py` files: **0 found**
+- Checked `todo/` directory: **Does not exist**
+- Verified latest commits: **Only documentation commits**
 
-#### Command Injection Prevention
+---
+
+## Security Assessment Status
+
+### Current Security Posture: N/A
+**Reason:** No code exists to assess for vulnerabilities.
+
+### Risk Level: LOW (No Active Code)
+- ✅ No exposed credentials (no code)
+- ✅ No injection vulnerabilities (no code)
+- ✅ No insecure dependencies (no code)
+- ✅ No sensitive data exposure (no code)
+
+### Required Action: IMPLEMENT WITH SECURITY CONTROLS
+Before the next review, implementation must be completed with ALL mandatory security controls.
+
+---
+
+## MANDATORY Security Requirements
+
+When implementing the CLI todo application, **ALL** of the following security controls are **REQUIRED**:
+
+### 🔴 CRITICAL Security Controls (Blocking)
+
+#### 1. Input Validation & Sanitization
 ```python
-# REQUIRED: Validate task descriptions
-import re
-
 def validate_task_description(description: str) -> str:
-    """Sanitize task input to prevent injection"""
+    """Sanitize and validate task descriptions"""
     if not description or not description.strip():
         raise ValueError("Task description cannot be empty")
     
-    # Limit length to prevent DoS
     if len(description) > 1000:
-        raise ValueError("Task description too long (max 1000 chars)")
+        raise ValueError("Description too long (max 1000 chars)")
     
     # Remove null bytes and control characters
     description = description.replace('\x00', '')
-    description = ''.join(char for char in description if ord(char) >= 32 or char in '\n\t')
+    description = ''.join(
+        char for char in description 
+        if ord(char) >= 32 or char in '\n\t'
+    )
     
     return description.strip()
-```
 
-**Vulnerability:** Without sanitization, special characters could cause issues in storage or display.
-
-#### ID Validation
-```python
-# REQUIRED: Validate task IDs
 def validate_task_id(task_id: str) -> int:
-    """Prevent injection via task ID parameter"""
+    """Validate task IDs are positive integers"""
     try:
         id_int = int(task_id)
         if id_int < 1:
             raise ValueError("Task ID must be positive")
         return id_int
-    except ValueError:
-        raise ValueError(f"Invalid task ID: {task_id}")
+    except ValueError as e:
+        raise ValueError(f"Invalid task ID: {task_id}") from e
 ```
 
-**Vulnerability:** Unvalidated IDs could cause errors or unexpected behavior.
+**Vulnerability Prevented:** Command injection, data corruption, DoS attacks
 
 ---
 
-### 2. **File System Security** [HIGH]
-
-#### Secure File Permissions
+#### 2. Path Traversal Protection
 ```python
-# REQUIRED: Set restrictive file permissions
-import os
-import stat
+from pathlib import Path
 
-def create_storage_file(filepath):
-    """Create storage file with user-only permissions"""
-    # Create file with 0600 permissions (owner read/write only)
-    fd = os.open(filepath, os.O_CREAT | os.O_WRONLY, 0o600)
-    os.close(fd)
+def get_safe_storage_path() -> Path:
+    """Ensure storage path is secure and within user's home"""
+    home = Path.home()
+    storage_path = home / ".todo.json"
     
-    # Verify permissions
-    current_perms = os.stat(filepath).st_mode & 0o777
-    if current_perms != 0o600:
-        os.chmod(filepath, 0o600)
+    # Prevent path traversal attacks
+    resolved = storage_path.resolve()
+    if not str(resolved).startswith(str(home)):
+        raise SecurityError("Invalid storage path - possible traversal attack")
+    
+    return storage_path
 ```
 
-**Vulnerability:** World-readable task files could expose private information.
+**Vulnerability Prevented:** Path traversal, arbitrary file write/read
 
-#### Atomic File Operations
+---
+
+#### 3. Secure File Permissions (0600)
 ```python
-# REQUIRED: Use atomic writes to prevent corruption
+import os
+
+FILE_PERMISSIONS = 0o600  # Owner read/write only
+
+def ensure_secure_permissions(filepath: Path) -> None:
+    """Enforce restrictive file permissions"""
+    if filepath.exists():
+        current_perms = filepath.stat().st_mode & 0o777
+        if current_perms != FILE_PERMISSIONS:
+            filepath.chmod(FILE_PERMISSIONS)
+    else:
+        # Create with secure permissions
+        fd = os.open(filepath, os.O_CREAT | os.O_WRONLY, FILE_PERMISSIONS)
+        os.close(fd)
+```
+
+**Vulnerability Prevented:** Unauthorized access to user's task data
+
+---
+
+#### 4. Atomic File Operations
+```python
 import tempfile
 import shutil
 
-def atomic_write(filepath, data):
-    """Atomic file write to prevent data corruption"""
-    dir_path = os.path.dirname(filepath)
+def atomic_write(filepath: Path, data: str) -> None:
+    """Atomic write to prevent corruption and race conditions"""
+    temp_fd, temp_path = tempfile.mkstemp(
+        dir=filepath.parent,
+        prefix='.todo_tmp_',
+        text=True
+    )
     
-    # Write to temporary file first
-    with tempfile.NamedTemporaryFile(
-        mode='w', 
-        dir=dir_path, 
-        delete=False,
-        prefix='.todo_tmp_'
-    ) as tmp_file:
-        tmp_file.write(data)
-        tmp_name = tmp_file.name
-    
-    # Set correct permissions before moving
-    os.chmod(tmp_name, 0o600)
-    
-    # Atomic rename
-    shutil.move(tmp_name, filepath)
+    try:
+        # Write to temp file
+        with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+            f.write(data)
+        
+        # Set secure permissions on temp file
+        os.chmod(temp_path, FILE_PERMISSIONS)
+        
+        # Atomic rename (POSIX guarantees atomicity)
+        shutil.move(temp_path, filepath)
+        
+    except Exception as e:
+        # Clean up temp file on failure
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        raise StorageError("Failed to write data") from e
 ```
 
-**Vulnerability:** Non-atomic writes could corrupt data or create race conditions.
+**Vulnerability Prevented:** Data corruption, race conditions, partial writes
 
 ---
 
-### 3. **JSON Security** [HIGH]
-
-#### Safe JSON Parsing
+#### 5. Safe JSON Parsing with Size Limits
 ```python
-# REQUIRED: Secure JSON handling
 import json
 
-MAX_JSON_SIZE = 10 * 1024 * 1024  # 10MB limit
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB limit
 
-def safe_json_load(filepath):
-    """Safely load and validate JSON data"""
+def safe_json_load(filepath: Path) -> dict:
+    """Load JSON with security validations"""
+    # Check file size before loading (DoS prevention)
+    file_size = filepath.stat().st_size
+    if file_size > MAX_FILE_SIZE:
+        raise SecurityError(f"File too large: {file_size} bytes")
+    
     try:
-        # Check file size before loading
-        file_size = os.path.getsize(filepath)
-        if file_size > MAX_JSON_SIZE:
-            raise SecurityError("JSON file too large")
-        
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         # Validate structure
-        if not isinstance(data, dict):
-            raise ValueError("Invalid JSON structure")
-        
-        if 'tasks' not in data or not isinstance(data['tasks'], list):
-            raise ValueError("Missing or invalid 'tasks' field")
-        
-        if 'next_id' not in data or not isinstance(data['next_id'], int):
-            raise ValueError("Missing or invalid 'next_id' field")
-        
+        validate_data_structure(data)
         return data
         
-    except json.JSONDecodeError as e:
-        # Log the error, return safe default
-        print(f"Warning: Corrupted JSON file. Creating new one.")
+    except json.JSONDecodeError:
+        # Corrupted file - create backup
+        backup = filepath.with_suffix('.json.bak')
+        shutil.copy2(filepath, backup)
+        print(f"Warning: Corrupted data. Backup: {backup}")
         return {"tasks": [], "next_id": 1}
+    
     except Exception as e:
-        print(f"Error loading tasks: {e}")
-        return {"tasks": [], "next_id": 1}
+        raise StorageError("Failed to load data") from e
 ```
 
-**Vulnerability:** Malformed JSON could crash the application or enable DoS attacks.
+**Vulnerability Prevented:** DoS attacks, JSON parsing exploits, data corruption
 
-#### Schema Validation
+---
+
+#### 6. JSON Schema Validation
 ```python
-# REQUIRED: Validate task objects
-def validate_task_object(task):
-    """Ensure task objects have valid structure"""
-    required_fields = {'id', 'description', 'completed', 'created_at'}
+def validate_data_structure(data: dict) -> None:
+    """Validate JSON data structure"""
+    if not isinstance(data, dict):
+        raise ValueError("Root must be a dictionary")
+    
+    # Validate required fields
+    if 'tasks' not in data or not isinstance(data['tasks'], list):
+        raise ValueError("Invalid 'tasks' field")
+    
+    if 'next_id' not in data or not isinstance(data['next_id'], int):
+        raise ValueError("Invalid 'next_id' field")
+    
+    # Validate each task
+    for task in data['tasks']:
+        validate_task_object(task)
+
+def validate_task_object(task: dict) -> None:
+    """Validate individual task structure"""
+    required = {'id', 'description', 'completed', 'created_at'}
     
     if not isinstance(task, dict):
         raise ValueError("Task must be a dictionary")
     
-    if not required_fields.issubset(task.keys()):
-        missing = required_fields - set(task.keys())
-        raise ValueError(f"Task missing required fields: {missing}")
+    if not required.issubset(task.keys()):
+        missing = required - set(task.keys())
+        raise ValueError(f"Missing fields: {missing}")
     
     if not isinstance(task['id'], int) or task['id'] < 1:
         raise ValueError("Invalid task ID")
     
     if not isinstance(task['description'], str):
-        raise ValueError("Task description must be a string")
+        raise ValueError("Description must be string")
+    
+    if len(task['description']) > 1000:
+        raise ValueError("Description too long")
     
     if not isinstance(task['completed'], bool):
-        raise ValueError("Task completed must be boolean")
+        raise ValueError("Completed must be boolean")
     
-    # Validate ISO 8601 timestamp
+    # Validate timestamp format
     from datetime import datetime
     try:
         datetime.fromisoformat(task['created_at'])
     except ValueError:
-        raise ValueError("Invalid created_at timestamp")
-    
-    return True
+        raise ValueError("Invalid timestamp format")
 ```
 
-**Vulnerability:** Invalid data structures could cause runtime errors or data corruption.
+**Vulnerability Prevented:** Data corruption, type confusion, runtime errors
 
 ---
 
-### 4. **Error Handling & Information Disclosure** [MEDIUM]
-
-#### Secure Error Messages
+#### 7. Resource Limits (DoS Prevention)
 ```python
-# REQUIRED: Don't expose sensitive information in errors
+MAX_TASKS = 10000
+MAX_DESCRIPTION_LENGTH = 1000
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+def add_task_with_limits(data: dict, description: str) -> dict:
+    """Add task with resource limits"""
+    # Limit total tasks
+    if len(data['tasks']) >= MAX_TASKS:
+        raise ValueError(f"Maximum tasks ({MAX_TASKS}) reached")
+    
+    # Limit description length
+    if len(description) > MAX_DESCRIPTION_LENGTH:
+        raise ValueError(f"Description exceeds {MAX_DESCRIPTION_LENGTH} chars")
+    
+    # Proceed with task creation
+    task = {
+        'id': data['next_id'],
+        'description': description,
+        'completed': False,
+        'created_at': datetime.now().isoformat()
+    }
+    
+    data['tasks'].append(task)
+    data['next_id'] += 1
+    
+    return task
+```
+
+**Vulnerability Prevented:** Denial of Service, resource exhaustion
+
+---
+
+#### 8. Secure Error Handling
+```python
 class TodoError(Exception):
     """Base exception for controlled error handling"""
     pass
@@ -249,65 +314,40 @@ class StorageError(TodoError):
     """Storage operation failed"""
     pass
 
-def safe_error_handler(func):
-    """Decorator to handle errors securely"""
+class SecurityError(TodoError):
+    """Security violation detected"""
+    pass
+
+def safe_operation(func):
+    """Decorator for secure error handling"""
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except TaskNotFoundError as e:
             print(f"Error: {e}")
             return None
-        except StorageError as e:
-            print(f"Storage error. Please check permissions.")
+        except StorageError:
+            # Don't expose internal details
+            print("Storage error. Check file permissions.")
             # Log detailed error for debugging (not shown to user)
-            # logging.error(f"Storage error details: {e}")
             return None
-        except Exception as e:
-            print(f"An unexpected error occurred. Please report this issue.")
-            # Log full exception for debugging
-            # logging.exception("Unexpected error")
+        except SecurityError as e:
+            print(f"Security error: {e}")
+            return None
+        except Exception:
+            # Generic error for unexpected issues
+            print("An unexpected error occurred.")
+            # Log full traceback for debugging
             return None
     return wrapper
 ```
 
-**Vulnerability:** Detailed error messages could reveal system information to attackers.
+**Vulnerability Prevented:** Information disclosure, stack trace leakage
 
 ---
 
-### 5. **Denial of Service Prevention** [MEDIUM]
-
-#### Resource Limits
+#### 9. Safe CLI Argument Parsing
 ```python
-# REQUIRED: Implement resource limits
-MAX_TASKS = 10000
-MAX_DESCRIPTION_LENGTH = 1000
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-def add_task_with_limits(description):
-    """Add task with DoS protections"""
-    data = load_tasks()
-    
-    # Limit number of tasks
-    if len(data['tasks']) >= MAX_TASKS:
-        raise ValueError(f"Maximum number of tasks ({MAX_TASKS}) reached")
-    
-    # Limit description length
-    if len(description) > MAX_DESCRIPTION_LENGTH:
-        raise ValueError(f"Description too long (max {MAX_DESCRIPTION_LENGTH} chars)")
-    
-    # Proceed with adding task
-    # ...
-```
-
-**Vulnerability:** Unbounded resource usage could lead to DoS attacks.
-
----
-
-### 6. **Command Line Argument Security** [MEDIUM]
-
-#### Safe Argument Parsing
-```python
-# REQUIRED: Use argparse for safe CLI parsing
 import argparse
 import sys
 
@@ -321,215 +361,246 @@ def main():
     subparsers = parser.add_subparsers(dest='command', required=True)
     
     # Add command
-    add_parser = subparsers.add_parser('add', help='Add a new task')
+    add_parser = subparsers.add_parser('add', help='Add new task')
     add_parser.add_argument('description', type=str, help='Task description')
     
     # List command
     subparsers.add_parser('list', help='List all tasks')
     
     # Done command
-    done_parser = subparsers.add_parser('done', help='Mark task as complete')
+    done_parser = subparsers.add_parser('done', help='Mark task complete')
     done_parser.add_argument('id', type=int, help='Task ID')
     
     # Delete command
-    delete_parser = subparsers.add_parser('delete', help='Delete a task')
+    delete_parser = subparsers.add_parser('delete', help='Delete task')
     delete_parser.add_argument('id', type=int, help='Task ID')
     
     try:
         args = parser.parse_args()
     except SystemExit:
-        # argparse calls sys.exit on error
         return 1
     
-    # Validate and execute command
-    # ...
+    # Validate and execute
+    try:
+        if args.command == 'add':
+            # Validate description before processing
+            clean_desc = validate_task_description(args.description)
+            add_task(clean_desc)
+        elif args.command == 'done':
+            # Validate ID
+            task_id = validate_task_id(str(args.id))
+            complete_task(task_id)
+        # ... etc
+    except ValueError as e:
+        print(f"Invalid input: {e}")
+        return 1
+    
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
 ```
 
-**Vulnerability:** Improper argument parsing could allow injection or unexpected behavior.
+**Vulnerability Prevented:** Argument injection, command injection
 
 ---
 
-### 7. **Data Integrity** [MEDIUM]
+### 🟡 HIGH Priority Security Controls
 
-#### Checksum/Validation
+#### 10. Explicit UTF-8 Encoding
 ```python
-# RECOMMENDED: Add integrity checking
-import hashlib
+# Always specify encoding explicitly
+with open(filepath, 'r', encoding='utf-8') as f:  # ✅ CORRECT
+    data = f.read()
 
-def calculate_checksum(data):
-    """Calculate checksum for data integrity"""
-    json_str = json.dumps(data, sort_keys=True)
-    return hashlib.sha256(json_str.encode()).hexdigest()
-
-def save_with_integrity(filepath, data):
-    """Save data with integrity check"""
-    data['_checksum'] = calculate_checksum({
-        'tasks': data['tasks'],
-        'next_id': data['next_id']
-    })
-    atomic_write(filepath, json.dumps(data, indent=2))
-
-def load_with_integrity(filepath):
-    """Load and verify data integrity"""
-    data = safe_json_load(filepath)
-    
-    if '_checksum' in data:
-        expected = data.pop('_checksum')
-        actual = calculate_checksum(data)
-        
-        if expected != actual:
-            print("Warning: Data integrity check failed")
-            # Consider whether to proceed or abort
-    
-    return data
+with open(filepath, 'r') as f:  # ❌ WRONG (platform-dependent)
+    data = f.read()
 ```
 
-**Vulnerability:** Data tampering could go undetected without integrity checks.
-
----
-
-## OWASP Top 10 Security Checklist
-
-### ✅ A01:2021 – Broken Access Control
-- [x] **IMPLEMENTED**: File permissions (0600) ensure only owner can access
-- [x] **IMPLEMENTED**: Path validation prevents directory traversal
-- [x] **IMPLEMENTED**: Storage file restricted to user's home directory
-
-### ✅ A02:2021 – Cryptographic Failures
-- [x] **N/A**: No sensitive data requiring encryption
-- [x] **IMPLEMENTED**: Secure file permissions protect data at rest
-- [⚠️] **RECOMMENDED**: Consider encryption for sensitive task descriptions
-
-### ✅ A03:2021 – Injection
-- [x] **IMPLEMENTED**: Input validation for all user inputs
-- [x] **IMPLEMENTED**: Task description sanitization
-- [x] **IMPLEMENTED**: Safe JSON parsing with schema validation
-- [x] **IMPLEMENTED**: No shell command execution
-- [x] **IMPLEMENTED**: Parameterized operations (no string concatenation)
-
-### ✅ A04:2021 – Insecure Design
-- [x] **IMPLEMENTED**: Atomic file operations prevent race conditions
-- [x] **IMPLEMENTED**: Resource limits prevent DoS
-- [x] **IMPLEMENTED**: Fail-safe defaults (corrupted data → empty state)
-- [x] **IMPLEMENTED**: Separation of concerns (CLI/Core/Storage)
-
-### ✅ A05:2021 – Security Misconfiguration
-- [x] **IMPLEMENTED**: Restrictive file permissions by default
-- [x] **IMPLEMENTED**: No hardcoded secrets
-- [x] **IMPLEMENTED**: Safe error messages (no information disclosure)
-- [x] **IMPLEMENTED**: Minimal dependencies (stdlib only)
-
-### ✅ A06:2021 – Vulnerable and Outdated Components
-- [x] **IMPLEMENTED**: No external dependencies (Python stdlib only)
-- [x] **IMPLEMENTED**: Python 3.8+ requirement (modern version)
-
-### ✅ A07:2021 – Identification and Authentication Failures
-- [x] **N/A**: Single-user CLI application
-- [x] **IMPLEMENTED**: OS-level authentication (file system permissions)
-
-### ✅ A08:2021 – Software and Data Integrity Failures
-- [x] **RECOMMENDED**: Checksum validation for data integrity
-- [x] **IMPLEMENTED**: Atomic writes prevent partial updates
-- [x] **IMPLEMENTED**: JSON schema validation
-
-### ✅ A09:2021 – Security Logging and Monitoring Failures
-- [⚠️] **RECOMMENDED**: Add logging for security events
-  - Failed file operations
-  - Invalid input attempts
-  - Data corruption events
-
-### ✅ A10:2021 – Server-Side Request Forgery (SSRF)
-- [x] **N/A**: No network operations
-
----
-
-## Additional Security Recommendations
-
-### 1. **Secure Coding Practices**
-- ✅ Use type hints for all functions
-- ✅ Implement comprehensive unit tests with security test cases
-- ✅ Use context managers for file operations (`with` statements)
-- ✅ Avoid global mutable state
-- ✅ Implement proper exception hierarchy
-
-### 2. **Testing Requirements**
-Must include tests for:
-- [ ] Path traversal attempts
-- [ ] Malicious JSON payloads
-- [ ] Extremely long task descriptions
-- [ ] Special characters in inputs (null bytes, control chars)
-- [ ] Concurrent access scenarios
-- [ ] Corrupted file recovery
-- [ ] Invalid task IDs (negative, zero, non-existent)
-- [ ] File permission verification
-
-### 3. **Documentation Requirements**
-- [ ] Security considerations in README
-- [ ] Threat model documentation
-- [ ] Incident response for corrupted data
-- [ ] Safe deployment instructions
-
-### 4. **Python-Specific Security**
+#### 11. Use Pathlib for Path Operations
 ```python
-# Use these secure patterns:
-
-# 1. Safe string formatting (use f-strings, not %)
-message = f"Task {task_id} not found"  # ✅
-message = "Task %s not found" % task_id  # ❌
-
-# 2. Explicit encoding
-with open(file, 'r', encoding='utf-8') as f:  # ✅
-with open(file, 'r') as f:  # ❌
-
-# 3. Use pathlib for paths
 from pathlib import Path
-storage = Path.home() / ".todo.json"  # ✅
-storage = os.path.expanduser("~/.todo.json")  # ⚠️
 
-# 4. Avoid eval/exec
-# Never use eval() or exec() on user input!
+# ✅ CORRECT - Secure and cross-platform
+storage_path = Path.home() / ".todo.json"
+
+# ⚠️ AVOID - Can have edge cases
+storage_path = os.path.expanduser("~/.todo.json")
+```
+
+#### 12. Custom Exception Hierarchy
+```python
+# Implement custom exceptions for better error handling
+class TodoError(Exception): pass
+class ValidationError(TodoError): pass
+class StorageError(TodoError): pass
+class SecurityError(TodoError): pass
+class TaskNotFoundError(TodoError): pass
 ```
 
 ---
 
-## Specific Implementation Checklist
+## OWASP Top 10 (2021) Compliance Checklist
 
-Before the next security review, ensure ALL of the following are implemented:
+| OWASP Category | Status | Implementation Required |
+|----------------|--------|------------------------|
+| **A01: Broken Access Control** | ⚠️ PENDING | File permissions (0600), path validation |
+| **A02: Cryptographic Failures** | ✅ N/A | No encryption needed (local storage) |
+| **A03: Injection** | ⚠️ PENDING | Input validation, sanitization |
+| **A04: Insecure Design** | ⚠️ PENDING | Atomic operations, resource limits |
+| **A05: Security Misconfiguration** | ⚠️ PENDING | Secure defaults, no hardcoded secrets |
+| **A06: Vulnerable Components** | ✅ COMPLIANT | No external dependencies |
+| **A07: Auth Failures** | ✅ N/A | Single-user, OS-level auth |
+| **A08: Data Integrity** | ⚠️ PENDING | Atomic writes, checksums (optional) |
+| **A09: Logging Failures** | ⚠️ RECOMMENDED | Security event logging |
+| **A10: SSRF** | ✅ N/A | No network operations |
 
-### Critical (Must Fix Before Release)
-- [ ] Input validation for all user inputs (task descriptions, IDs)
-- [ ] File permission validation and enforcement (0600)
-- [ ] Path traversal prevention
-- [ ] Safe JSON parsing with size limits
-- [ ] Atomic file write operations
-- [ ] Resource limits (max tasks, max description length)
-- [ ] Proper error handling (no information disclosure)
-- [ ] Command-line argument validation using argparse
-
-### High Priority (Should Fix Before Release)
-- [ ] JSON schema validation for all loaded data
-- [ ] Comprehensive error handling with custom exceptions
-- [ ] Null byte and control character filtering
-- [ ] File size validation before parsing
-- [ ] Secure default configuration
-
-### Medium Priority (Recommended)
-- [ ] Data integrity checksums
-- [ ] Security event logging
-- [ ] Comprehensive security test suite
-- [ ] Threat model documentation
-
-### Low Priority (Nice to Have)
-- [ ] Optional encryption for sensitive tasks
-- [ ] Backup mechanism for data recovery
-- [ ] Audit trail for task modifications
+**Legend:**
+- ✅ **COMPLIANT** - Requirements met or not applicable
+- ⚠️ **PENDING** - Must be implemented in code
+- ⚠️ **RECOMMENDED** - Optional but advised
 
 ---
 
-## Sample Secure Implementation Template
+## Security Testing Requirements
+
+Before approval, implement tests for:
+
+### Input Validation Tests
+- [ ] Empty task descriptions (should reject)
+- [ ] Extremely long descriptions (>1000 chars)
+- [ ] Null bytes in input (`\x00`)
+- [ ] Control characters (ASCII < 32)
+- [ ] Unicode edge cases
+- [ ] Negative task IDs
+- [ ] Non-integer task IDs
+- [ ] Zero task ID
+
+### File System Security Tests
+- [ ] File permissions are 0600
+- [ ] Path traversal attempts blocked
+- [ ] Concurrent write safety
+- [ ] Atomic write verification
+- [ ] Storage outside home directory blocked
+
+### JSON Security Tests
+- [ ] Malformed JSON recovery
+- [ ] Oversized JSON files (>10MB)
+- [ ] Invalid schema structures
+- [ ] Missing required fields
+- [ ] Wrong data types
+- [ ] Corrupted timestamp formats
+
+### DoS Prevention Tests
+- [ ] Maximum task limit enforcement
+- [ ] Maximum description length enforcement
+- [ ] File size limit enforcement
+- [ ] Memory usage with large datasets
+
+### Error Handling Tests
+- [ ] Information disclosure prevention
+- [ ] Graceful failure on corrupted data
+- [ ] Proper exception handling
+- [ ] User-friendly error messages
+
+---
+
+## Additional Security Best Practices
+
+### 1. Type Hints (Static Type Safety)
+```python
+from typing import Dict, List, Optional
+from pathlib import Path
+
+def load_tasks() -> Dict[str, Any]:
+    """Load tasks with type hints"""
+    pass
+
+def add_task(description: str) -> Optional[dict]:
+    """Add task with validated input"""
+    pass
+```
+
+### 2. Context Managers (Resource Safety)
+```python
+# ✅ CORRECT - Automatic cleanup
+with open(filepath, 'r', encoding='utf-8') as f:
+    data = f.read()
+
+# ❌ WRONG - Manual cleanup required
+f = open(filepath, 'r')
+data = f.read()
+f.close()  # Might not execute if error occurs
+```
+
+### 3. Avoid Dangerous Functions
+```python
+# ❌ NEVER USE ON USER INPUT
+eval(user_input)
+exec(user_input)
+__import__(user_input)
+compile(user_input)
+
+# ✅ SAFE ALTERNATIVES
+json.loads(user_input)  # For data
+int(user_input)  # For numbers
+```
+
+### 4. Secure String Formatting
+```python
+# ✅ SAFE
+message = f"Task {task_id} completed"
+message = "Task {} completed".format(task_id)
+
+# ⚠️ DEPRECATED (but not dangerous in this context)
+message = "Task %d completed" % task_id
+```
+
+---
+
+## Implementation Checklist
+
+### Phase 1: Core Security (BLOCKING)
+- [ ] Implement `get_safe_storage_path()` with path validation
+- [ ] Implement `ensure_secure_permissions()` for file permissions
+- [ ] Implement `atomic_write()` for safe file operations
+- [ ] Implement `safe_json_load()` with size limits
+- [ ] Implement `validate_data_structure()` for schema validation
+- [ ] Implement `validate_task_description()` for input sanitization
+- [ ] Implement `validate_task_id()` for ID validation
+- [ ] Implement resource limits (MAX_TASKS, MAX_DESCRIPTION_LENGTH)
+- [ ] Implement custom exception hierarchy
+- [ ] Implement secure CLI argument parsing with argparse
+
+### Phase 2: Testing (REQUIRED)
+- [ ] Unit tests for all validation functions
+- [ ] Security tests for injection attempts
+- [ ] File permission tests
+- [ ] Concurrent access tests
+- [ ] Error handling tests
+- [ ] Edge case tests (empty, null, oversized)
+- [ ] Achieve >80% code coverage
+
+### Phase 3: Documentation (REQUIRED)
+- [ ] Document security considerations in README
+- [ ] Add docstrings to all functions
+- [ ] Create SECURITY.md with security policy
+- [ ] Document incident response procedures
+
+### Phase 4: Optional Enhancements
+- [ ] Add data integrity checksums
+- [ ] Implement security event logging
+- [ ] Add backup/recovery mechanism
+- [ ] Consider encryption for sensitive tasks
+
+---
+
+## Sample Secure Storage Module
 
 ```python
-# todo/storage.py - SECURE TEMPLATE
+"""
+todo/storage.py - Secure Storage Implementation
+"""
 
 import json
 import os
@@ -537,18 +608,30 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, List, Any
+from datetime import datetime
 
+# Security constants
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_PERMISSIONS = 0o600
+MAX_TASKS = 10000
+MAX_DESCRIPTION_LENGTH = 1000
 
 
-class SecurityError(Exception):
-    """Security-related errors"""
+# Custom exceptions
+class TodoError(Exception):
+    """Base exception"""
     pass
 
+class SecurityError(TodoError):
+    """Security violation"""
+    pass
 
-class StorageError(Exception):
-    """Storage operation errors"""
+class StorageError(TodoError):
+    """Storage operation failed"""
+    pass
+
+class ValidationError(TodoError):
+    """Data validation failed"""
     pass
 
 
@@ -566,7 +649,7 @@ def get_storage_path() -> Path:
 
 
 def ensure_secure_permissions(filepath: Path) -> None:
-    """Ensure file has secure permissions"""
+    """Ensure file has secure permissions (0600)"""
     if filepath.exists():
         current = filepath.stat().st_mode & 0o777
         if current != FILE_PERMISSIONS:
@@ -585,23 +668,57 @@ def atomic_write(filepath: Path, data: str) -> None:
         with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
             f.write(data)
         
-        # Set secure permissions
         os.chmod(temp_path, FILE_PERMISSIONS)
-        
-        # Atomic rename
         shutil.move(temp_path, filepath)
         
     except Exception as e:
-        # Clean up temp file on error
         try:
             os.unlink(temp_path)
         except:
             pass
-        raise StorageError(f"Failed to write data") from e
+        raise StorageError("Failed to write data") from e
+
+
+def validate_data_structure(data: Dict[str, Any]) -> None:
+    """Validate JSON data structure"""
+    if not isinstance(data, dict):
+        raise ValidationError("Data must be dictionary")
+    
+    if 'tasks' not in data or not isinstance(data['tasks'], list):
+        raise ValidationError("Invalid tasks field")
+    
+    if 'next_id' not in data or not isinstance(data['next_id'], int):
+        raise ValidationError("Invalid next_id field")
+    
+    for task in data['tasks']:
+        validate_task(task)
+
+
+def validate_task(task: Dict[str, Any]) -> None:
+    """Validate task object"""
+    required = {'id', 'description', 'completed', 'created_at'}
+    
+    if not isinstance(task, dict):
+        raise ValidationError("Task must be dictionary")
+    
+    if not required.issubset(task.keys()):
+        raise ValidationError("Missing required fields")
+    
+    if not isinstance(task['id'], int) or task['id'] < 1:
+        raise ValidationError("Invalid task ID")
+    
+    if not isinstance(task['description'], str):
+        raise ValidationError("Invalid description")
+    
+    if len(task['description']) > MAX_DESCRIPTION_LENGTH:
+        raise ValidationError("Description too long")
+    
+    if not isinstance(task['completed'], bool):
+        raise ValidationError("Invalid completed status")
 
 
 def load_data() -> Dict[str, Any]:
-    """Safely load and validate JSON data"""
+    """Safely load and validate data"""
     filepath = get_storage_path()
     
     if not filepath.exists():
@@ -610,24 +727,21 @@ def load_data() -> Dict[str, Any]:
     # Check file size
     file_size = filepath.stat().st_size
     if file_size > MAX_FILE_SIZE:
-        raise SecurityError("Storage file too large")
+        raise SecurityError(f"File too large: {file_size} bytes")
     
-    # Ensure secure permissions
     ensure_secure_permissions(filepath)
     
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Validate structure
         validate_data_structure(data)
         return data
         
     except json.JSONDecodeError:
-        # Corrupted file - create backup and start fresh
-        backup_path = filepath.with_suffix('.json.bak')
-        shutil.copy2(filepath, backup_path)
-        print(f"Warning: Corrupted data file. Backup saved to {backup_path}")
+        backup = filepath.with_suffix('.json.bak')
+        shutil.copy2(filepath, backup)
+        print(f"Warning: Corrupted data. Backup: {backup}")
         return {"tasks": [], "next_id": 1}
     
     except Exception as e:
@@ -643,72 +757,53 @@ def save_data(data: Dict[str, Any]) -> None:
     
     atomic_write(filepath, json_str)
     ensure_secure_permissions(filepath)
-
-
-def validate_data_structure(data: Dict[str, Any]) -> None:
-    """Validate data structure"""
-    if not isinstance(data, dict):
-        raise ValueError("Data must be a dictionary")
-    
-    if 'tasks' not in data or not isinstance(data['tasks'], list):
-        raise ValueError("Invalid tasks field")
-    
-    if 'next_id' not in data or not isinstance(data['next_id'], int):
-        raise ValueError("Invalid next_id field")
-    
-    for task in data['tasks']:
-        validate_task(task)
-
-
-def validate_task(task: Dict[str, Any]) -> None:
-    """Validate individual task object"""
-    required = {'id', 'description', 'completed', 'created_at'}
-    
-    if not isinstance(task, dict):
-        raise ValueError("Task must be a dictionary")
-    
-    if not required.issubset(task.keys()):
-        raise ValueError("Task missing required fields")
-    
-    if not isinstance(task['id'], int) or task['id'] < 1:
-        raise ValueError("Invalid task ID")
-    
-    if not isinstance(task['description'], str):
-        raise ValueError("Invalid description")
-    
-    if len(task['description']) > 1000:
-        raise ValueError("Description too long")
-    
-    if not isinstance(task['completed'], bool):
-        raise ValueError("Invalid completed status")
 ```
 
 ---
 
 ## Conclusion
 
-**Current Status:** No implementation code exists yet.
+### Current Status
+- **Implementation:** NOT STARTED
+- **Security Review:** BLOCKED (no code to review)
+- **Vulnerabilities Found:** 0 (no code exists)
+- **Security Debt:** HIGH (all security controls pending)
 
-**Security Verdict:** CHANGES_REQUIRED
+### Security Verdict
+**CHANGES_REQUIRED** - Implementation must include all mandatory security controls before approval.
 
-**Next Steps:**
-1. Implement the application following the security requirements outlined above
-2. Include all mandatory security controls marked as [CRITICAL] and [HIGH]
-3. Implement comprehensive security tests
-4. Request another security review once implementation is complete
+### Next Steps
+1. ✅ Review security requirements (this document)
+2. ⚠️ Implement all CRITICAL security controls
+3. ⚠️ Implement all HIGH priority security controls
+4. ⚠️ Create comprehensive security test suite
+5. ⚠️ Request re-review with implementation
 
-**Approval Criteria:**
-- ✅ All CRITICAL security controls implemented
-- ✅ All HIGH priority security controls implemented  
-- ✅ Security test suite with >90% coverage
+### Approval Criteria
+For the next security review to pass, ALL of the following must be met:
+
+- ✅ All 9 CRITICAL security controls implemented
+- ✅ All HIGH priority controls implemented
+- ✅ Input validation on all user inputs
+- ✅ File permissions enforced (0600)
+- ✅ Path traversal protection in place
+- ✅ Atomic file operations implemented
+- ✅ JSON validation and size limits enforced
+- ✅ Resource limits implemented
+- ✅ Secure error handling (no info disclosure)
+- ✅ Security test suite with >80% coverage
 - ✅ No OWASP Top 10 vulnerabilities present
-- ✅ Secure coding practices followed
-- ✅ Documentation updated with security considerations
+- ✅ Documentation includes security considerations
+
+### Estimated Security Implementation Time
+- Core security controls: 2-3 hours
+- Security testing: 2-3 hours
+- Documentation: 1 hour
+- **Total: 5-7 hours**
 
 ---
 
-## Contact
-
-For security questions or to report vulnerabilities, contact the security team.
-
-**Review Status:** Initial review - awaiting implementation
+**Reviewer:** Security Engineering Team  
+**Status:** CHANGES_REQUIRED - Awaiting implementation  
+**Follow-up Required:** YES - Re-review after implementation  
+**Risk Level:** LOW (no active code deployed)
