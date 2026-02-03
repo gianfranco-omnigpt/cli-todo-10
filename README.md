@@ -109,8 +109,58 @@ todo/
 - Integration tests for CLI commands
 - Edge cases: empty list, invalid IDs, special characters
 
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/gianfranco-omnigpt/cli-todo-10.git
+cd cli-todo-10
+
+# Install the package
+pip install -e .
+```
+
+## Usage
+
+After installation, you can use the `todo` command:
+
+```bash
+# Add a new task
+todo add "Buy groceries"
+
+# List all tasks
+todo list
+
+# Mark a task as complete
+todo done 1
+
+# Delete a task
+todo delete 1
+```
+
+Alternatively, run without installation:
+
+```bash
+python -m todo add "Buy groceries"
+python -m todo list
+python -m todo done 1
+python -m todo delete 1
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+python -m unittest discover tests
+
+# Run specific test module
+python -m unittest tests.test_core
+python -m unittest tests.test_storage
+python -m unittest tests.test_cli
+```
+
 ## Implementation Status
-- [ ] Setup complete
-- [ ] Implementation in progress
+- [x] Setup complete
+- [x] Implementation in progress
 - [ ] Code review passed
 - [ ] Security review passed
